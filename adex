@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# adex - wrapper around `ade` that authenticates via the local
+# .claude-credentials.json (OAuth) instead of ANTHROPIC_API_KEY.
+#
+# Verifies the credentials file is present and the OAuth access token has not
+# expired, unsets ANTHROPIC_API_KEY, then forwards all arguments to `ade`.
+#
+# Refresh stale credentials by running, on the host:
+#   claude    # then /logout, exit, relaunch to /login
+#   security find-generic-password -s 'Claude Code-credentials' -w \
+#     > .claude-credentials.json && chmod 600 .claude-credentials.json
+
+set -euo pipefail
+
+SCRIPT_DIR="$(python3 -c "import os,sys; print(os.path.dirname(os.path.realpath(sys.argv[1])))" "${BASH_SOURCE[0]}")"
+CREDS="${SCRIPT_DIR}/.claude-credentials.json"
+
+if [[ ! -f "$CREDS" ]]; then
+  echo "adex: credentials file not found: $CREDS" >&2
+  echo "      security find-generic-password -s 'Claude Code-credentials' -w > '$CREDS' && chmod 600 '$CREDS'" >&2
+  exit 1
+fi
+
+python3 - "$CREDS" <<'PYEOF'
+import datetime, json, sys, time
+path = sys.argv[1]
+try:
+    exp_ms = json.load(open(path))["claudeAiOauth"]["expiresAt"]
+except (KeyError, ValueError, OSError) as e:
+    print(f"adex: credentials file is malformed: {e}", file=sys.stderr)
+    sys.exit(2)
+delta_min = (exp_ms / 1000 - time.time()) / 60
+if delta_min <= 0:
+    iso = datetime.datetime.fromtimestamp(exp_ms / 1000).isoformat()
+    print(f"adex: OAuth access token expired ({iso}, {abs(delta_min):.0f} min ago)", file=sys.stderr)
+    print( "      Refresh on host (claude, /logout, relaunch, /login), then re-extract:", file=sys.stderr)
+    print(f"      security find-generic-password -s 'Claude Code-credentials' -w > {path} && chmod 600 {path}", file=sys.stderr)
+    sys.exit(3)
+PYEOF
+
+unset ANTHROPIC_API_KEY
+exec uv run --project "$SCRIPT_DIR" ade "$@"

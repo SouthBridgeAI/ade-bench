@@ -28,6 +28,7 @@ ENV/
 # Environment
 .env
 .env.local
+.claude-credentials.json
 
 # IDE
 .vscode/
@@ -88,3 +89,5 @@ dmypy.json
 
 # misc
 zz-*
+
+.claude-credentials.json

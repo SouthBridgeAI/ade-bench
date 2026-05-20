@@ -4,13 +4,21 @@ from pathlib import Path
 from typing import Any
 
 from ade_bench.agents.agent_name import AgentName
+from ade_bench.agents.base_agent import AgentResult
 from ade_bench.agents.installed_agents.abstract_installed_agent import (
     AbstractInstalledAgent,
 )
 from ade_bench.agents.installed_agents.claude_code.log_formatter import ClaudeCodeLogFormatter
 from ade_bench.harness_models import TerminalCommand
 from ade_bench.parsers.claude_parser import ClaudeParser
+from ade_bench.terminal.tmux_session import TmuxSession
+from ade_bench.utils.logger import log_harness_info, logger
 from ade_bench.config import config
+
+
+_PROJECT_ROOT_CREDENTIALS = Path(__file__).resolve().parents[4] / ".claude-credentials.json"
+_CONTAINER_CREDENTIALS_DIR = "/root/.claude"
+_CONTAINER_CREDENTIALS_FILENAME = ".credentials.json"
 
 
 class ClaudeCodeAgent(AbstractInstalledAgent):
@@ -23,9 +31,49 @@ class ClaudeCodeAgent(AbstractInstalledAgent):
 
     @property
     def _env(self) -> dict[str, str]:
-        return {
-            "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
-        }
+        env: dict[str, str] = {}
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if api_key:
+            env["ANTHROPIC_API_KEY"] = api_key
+        return env
+
+    def perform_task(
+        self,
+        task_prompt: str,
+        session: TmuxSession,
+        logging_dir: Path | None = None,
+        task_name: str | None = None,
+    ) -> AgentResult:
+        self._copy_credentials_into_container(session, task_name)
+        return super().perform_task(
+            task_prompt=task_prompt,
+            session=session,
+            logging_dir=logging_dir,
+            task_name=task_name,
+        )
+
+    def _copy_credentials_into_container(
+        self, session: TmuxSession, task_name: str | None
+    ) -> None:
+        if not _PROJECT_ROOT_CREDENTIALS.exists():
+            return
+        log_harness_info(
+            logger,
+            task_name,
+            "agent",
+            f"Found {_PROJECT_ROOT_CREDENTIALS.name}; mounting Claude Code OAuth credentials into container",
+        )
+        session.container.exec_run(
+            ["sh", "-c", f"mkdir -p {_CONTAINER_CREDENTIALS_DIR} && chmod 700 {_CONTAINER_CREDENTIALS_DIR}"]
+        )
+        session.copy_to_container(
+            _PROJECT_ROOT_CREDENTIALS,
+            container_dir=_CONTAINER_CREDENTIALS_DIR,
+            container_filename=_CONTAINER_CREDENTIALS_FILENAME,
+        )
+        session.container.exec_run(
+            ["sh", "-c", f"chmod 600 {_CONTAINER_CREDENTIALS_DIR}/{_CONTAINER_CREDENTIALS_FILENAME}"]
+        )
 
     @property
     def _install_agent_script(self) -> os.PathLike:
