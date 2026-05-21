@@ -1537,8 +1537,12 @@ class Harness:
         original_run_id = self._run_id
 
         for plugin_set in self._plugin_sets:
-            # Create run ID with plugin set suffix
-            self._run_id = f"{original_run_id}__{plugin_set.name}"
+            # Append plugin set suffix, but omit the no-op default ("none") to
+            # keep the run directory name clean.
+            if plugin_set.name == "none":
+                self._run_id = original_run_id
+            else:
+                self._run_id = f"{original_run_id}__{plugin_set.name}"
             self._current_plugin_set = plugin_set
 
             # Ensure output directory exists for this plugin set

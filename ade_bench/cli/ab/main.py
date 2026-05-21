@@ -1,6 +1,7 @@
 """Main entry point for the ADE-bench CLI."""
 
 import os
+import re
 import typer
 import logging
 from datetime import datetime
@@ -109,10 +110,10 @@ def run(
     persist: bool = typer.Option(
         False, "--persist", help="Keep containers alive when tasks fail for debugging"
     ),
-    run_id: str = typer.Option(
-        datetime.now().strftime("%Y-%m-%d__%H-%M-%S"),
+    run_id: Optional[str] = typer.Option(
+        None,
         "--run-id",
-        help="Unique identifier for this harness run",
+        help="Unique identifier for this harness run (default: <timestamp>__<agent>[_<model>])",
     ),
     max_episodes: int = typer.Option(
         50, "--max-episodes", help="The maximum number of episodes (i.e. calls to an agent's LM)"
@@ -176,6 +177,15 @@ def run(
         typer.echo(f"Error: Invalid agent name '{agent}'")
         typer.echo(f"Available agents: {', '.join([a.value for a in AgentName])}")
         raise typer.Exit(code=1)
+
+    # Build a descriptive run_id when one wasn't explicitly provided:
+    #   <timestamp>__<agent>[_<model>]
+    if run_id is None:
+        run_id = f"{datetime.now().strftime('%Y-%m-%d__%H-%M-%S')}__{agent_name.value}"
+        if model_name:
+            safe_model = re.sub(r"[^A-Za-z0-9._-]+", "_", model_name).strip("_")
+            if safe_model:
+                run_id += f"_{safe_model}"
 
     # Setup path variables
     dataset_path = tasks_dir
