@@ -29,6 +29,7 @@ ENV/
 .env
 .env.local
 .claude-credentials.json
+.codex-auth.json
 
 # IDE
 .vscode/

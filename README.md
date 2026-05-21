@@ -397,6 +397,26 @@ gemini --output-format json --yolo --prompt {task_prompt} --model {model-id}
 
 Configuration files for each agent are found in the `/shared/config` directory. You can use `CLAUDE.md` to configure Claude Code, `AGENTS.md` to configure Codex, and `GEMINI.md` to configure Gemini.
 
+#### Subscription (OAuth) authentication
+
+Claude Code and Codex can run on a subscription instead of an API key by dropping the host OAuth
+credentials at the repo root (both files are gitignored) and running through the `./adex` wrapper,
+which validates the token's expiry and unsets the matching API key before forwarding to `ade`:
+
+```bash
+# Claude Code (Claude Pro/Max)
+security find-generic-password -s 'Claude Code-credentials' -w > .claude-credentials.json && chmod 600 .claude-credentials.json
+
+# Codex (ChatGPT subscription)
+cp ~/.codex/auth.json .codex-auth.json && chmod 600 .codex-auth.json
+
+# Run on subscription (e.g. Codex)
+./adex --agent codex --task-ids <task>
+```
+
+When `.codex-auth.json` is present the Codex agent mounts it into the container and skips the
+`codex login --with-api-key` step; otherwise it falls back to the `OPENAI_API_KEY` path shown above.
+
 ### Plugin sets
 
 Plugin sets are declarative configurations of skills, MCP servers, and allowed tools that can be applied to benchmark runs. They are defined in `experiment_sets/plugin-sets.yaml`.
