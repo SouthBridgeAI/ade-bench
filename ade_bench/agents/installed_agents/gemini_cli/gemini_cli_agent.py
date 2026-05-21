@@ -34,7 +34,7 @@ class GeminiCLIAgent(AbstractInstalledAgent):
     def _run_agent_commands(self, task_prompt: str) -> list[TerminalCommand]:
         header = "echo 'AGENT RESPONSE: ' && "
         escaped_prompt = shlex.quote(task_prompt)
-        command = f"{header} gemini --output-format json -y -p {escaped_prompt}"
+        command = f"{header} gemini --output-format json -y --skip-trust -p {escaped_prompt}"
 
         if self._model_name:
             command += f" --model {self._model_name}"
