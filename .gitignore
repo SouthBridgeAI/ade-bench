@@ -91,4 +91,8 @@ dmypy.json
 # misc
 zz-*
 
-.claude-credentials.json
+# hankweave jazz
+hw/
+
+# reports
+reports/
