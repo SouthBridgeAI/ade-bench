@@ -126,8 +126,8 @@ case "${1:-}" in
     ;;
 
   __monitor)
-    # __monitor <TS> <NO_CLEANUP>
-    TS="$2"; NO_CLEANUP="$3"
+    # __monitor <TS> <NO_CLEANUP> <SESSION>
+    TS="$2"; NO_CLEANUP="$3"; SESSION="$4"
     LOG_DIR="experiments/_runlogs/${TS}"
     done_dir="${LOG_DIR}/_done"
     n="${#EXPERIMENTS[@]}"
@@ -141,28 +141,31 @@ case "${1:-}" in
     done
     echo
     echo
-    echo "============================ SUMMARY ============================"
-    printf "%-52s %s\n" "RUN" "RESULT"
-    for entry in "${EXPERIMENTS[@]}"; do
-      agent="${entry%%:*}"
-      model="${entry##*:}"
-      run_id="$(make_run_id "$TS" "$agent" "$model")"
-      tsv="experiments/${run_id}/results.tsv"
-      if [[ -f "$tsv" ]]; then
-        total=$(($(wc -l < "$tsv") - 1))
-        passed=$(awk -F'\t' 'NR>1 && $3=="pass"' "$tsv" | wc -l | tr -d ' ')
-        printf "%-52s %s\n" "$run_id" "${passed}/${total} passed"
-      else
-        printf "%-52s %s\n" "$run_id" "no results (run failed early)"
-      fi
-    done
-    echo "Console logs: ${LOG_DIR}"
-    echo "================================================================"
+    {
+      echo "============================ SUMMARY ============================"
+      printf "%-52s %s\n" "RUN" "RESULT"
+      for entry in "${EXPERIMENTS[@]}"; do
+        agent="${entry%%:*}"
+        model="${entry##*:}"
+        run_id="$(make_run_id "$TS" "$agent" "$model")"
+        tsv="experiments/${run_id}/results.tsv"
+        if [[ -f "$tsv" ]]; then
+          total=$(($(wc -l < "$tsv") - 1))
+          passed=$(awk -F'\t' 'NR>1 && $3=="pass"' "$tsv" | wc -l | tr -d ' ')
+          printf "%-52s %s\n" "$run_id" "${passed}/${total} passed"
+        else
+          printf "%-52s %s\n" "$run_id" "no results (run failed early)"
+        fi
+      done
+      echo "Console logs: ${LOG_DIR}"
+      echo "================================================================"
+    } | tee "${LOG_DIR}/summary.txt"
 
     cleanup_docker
     echo
-    echo "Monitor done. Pane stays open; close with Ctrl-b x, or type 'exit'."
-    exec "${SHELL:-/bin/bash}"
+    echo "All runs complete. Summary saved to ${LOG_DIR}/summary.txt."
+    echo "Closing tmux session '${SESSION}'..."
+    tmux kill-session -t "$SESSION"
     ;;
 esac
 
@@ -195,7 +198,7 @@ pane_cmd() {
     "$SELF" "$1" "$TASKS" "$DB" "$PROJECT_TYPE" "$CONCURRENCY" "$TS"
 }
 monitor_cmd() {
-  printf "exec '%s' __monitor '%s' '%s'" "$SELF" "$TS" "$NO_CLEANUP"
+  printf "exec '%s' __monitor '%s' '%s' '%s'" "$SELF" "$TS" "$NO_CLEANUP" "$SESSION"
 }
 
 # Fresh session.
