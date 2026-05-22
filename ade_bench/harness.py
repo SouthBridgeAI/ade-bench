@@ -1390,6 +1390,7 @@ class Harness:
             task_key=task_key,
             variant_config=config,
             agent_name=self._agent_name,
+            run_id=self._run_id,
         )
 
         try:

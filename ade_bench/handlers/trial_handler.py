@@ -179,6 +179,7 @@ class TrialHandler:
         task_key: str = "base",
         variant_config: dict | None = None,
         agent_name=None,
+        run_id: str | None = None,
     ):
         self.trial_name = trial_name
         self.input_path = input_path
@@ -186,6 +187,7 @@ class TrialHandler:
         self.task_key = task_key
         self.variant_config = variant_config or {}
         self.agent_name = agent_name
+        self.run_id = run_id
 
         self._logger = logger.getChild(__name__)
         self.task = Task.from_yaml(self._task_config_path)
@@ -231,7 +233,13 @@ class TrialHandler:
 
     @property
     def client_container_name(self) -> str:
-        return f"{self.trial_name}__client".replace(".", "-")
+        # Prefix with run_id so concurrent runs of the same task get distinct
+        # container / compose-project / network names. Image names stay keyed by
+        # task_id (see docker_image_prefix) so the build cache is shared.
+        base = f"{self.trial_name}__client"
+        if self.run_id:
+            base = f"{self.run_id}__{base}"
+        return base.replace(".", "-")
 
     @property
     def client_image_name(self) -> str:

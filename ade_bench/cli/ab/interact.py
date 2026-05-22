@@ -110,7 +110,9 @@ def interact(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Create the trial handler
-    trial_handler = TrialHandler(trial_name=task_id, input_path=task_dir, output_path=output_dir)
+    trial_handler = TrialHandler(
+        trial_name=task_id, input_path=task_dir, output_path=output_dir, run_id=run_id
+    )
 
     # Find the matching variant
     variant_found = False
