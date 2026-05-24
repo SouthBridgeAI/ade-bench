@@ -12,6 +12,8 @@ class AgentName(Enum):
     OPENAI_CODEX = "codex"
     GEMINI_CLI = "gemini"
     MACRO = "macro"
+    # Generic bridge for external "bench" harnesses (install + run commands via env vars).
+    BENCH_HARNESS = "bench-harness"
 
     def model_name_from_agent_name(model_name, agent_name):
         if agent_name == AgentName.SAGE:
