@@ -2,11 +2,14 @@
 ade-bench agent that solves a task by running a one-codon Hankweave hank.
 
 Flow per task (all inside the sandbox container, cwd /app = the dbt project ade grades):
-  1. `hankweave-setup.sh` (copied + sourced once) writes the hank + helper scripts.
+  1. The hank (hank.json + prompt-header.md) is synced from the project-root `hanks/base` into
+     /installed-agent/hank, and the run-hankweave.sh + hw-metrics.js glue is copied to
+     /installed-agent (see perform_task). `hankweave-setup.sh` is then sourced as a thin installer
+     (PATH + bun sanity check); it no longer generates any files.
   2. The task prompt is written to /tmp/hw_task_prompt.txt (base64-decoded, quoting-safe).
-  3. `run-hankweave.sh` snapshots /app into a read-only data source, runs
-     `hankweave hank.json <data> --model haiku`, then mirrors the agent's edited copy
-     (agentRoot/project) back into /app so ade can score it with dbt tests.
+  3. `run-hankweave.sh` snapshots /app into a read-only data source, composes the codon prompt
+     (prompt-header.md + task prompt), runs `hankweave hank.json <data> --model haiku`, then mirrors
+     the agent's edited copy (agentRoot/project) back into /app so ade can score it with dbt tests.
   4. The runner emits a final `{...input_tokens...}` JSON line that the base class parses.
 
 Auth: hankweave's embedded Claude Agent SDK authenticates from env vars (its startup self-test
@@ -23,17 +26,27 @@ from pathlib import Path
 from typing import Any
 
 from ade_bench.agents.agent_name import AgentName
+from ade_bench.agents.base_agent import AgentResult
 from ade_bench.agents.installed_agents.abstract_installed_agent import (
     AbstractInstalledAgent,
 )
 from ade_bench.config import config
 from ade_bench.harness_models import TerminalCommand
+from ade_bench.terminal.tmux_session import TmuxSession
+from ade_bench.utils.logger import log_harness_info, logger
 
 PROMPT_FILE = "/tmp/hw_task_prompt.txt"
 
 # Same depth as the claude agent: parents[4] == the ade-bench (submodule) root, where the
 # superbench adapter symlinks the project-root .claude-credentials.json for subscription auth.
 _PROJECT_ROOT_CREDENTIALS = Path(__file__).resolve().parents[4] / ".claude-credentials.json"
+
+# The portable hank lives at the superbench project root (parents[6] == one level above the
+# ade-bench submodule). It is synced into the container by perform_task. The ade-integration glue
+# (run-hankweave.sh, hw-metrics.js) lives next to this file and is copied in alongside it.
+_PROJECT_ROOT_HANKS_BASE = Path(__file__).resolve().parents[6] / "hanks" / "base"
+_AGENT_DIR = Path(__file__).resolve().parent
+_CONTAINER_HANK_DIR = "/installed-agent/hank"
 
 
 class HankweaveAgent(AbstractInstalledAgent):
@@ -70,6 +83,48 @@ class HankweaveAgent(AbstractInstalledAgent):
     @property
     def _install_agent_script(self) -> os.PathLike:
         return Path(__file__).parent / "hankweave-setup.sh"
+
+    def perform_task(
+        self,
+        task_prompt: str,
+        session: TmuxSession,
+        logging_dir: Path | None = None,
+        task_name: str | None = None,
+    ) -> AgentResult:
+        # Sync the hank + glue into the container before the base class installs the thin setup
+        # script and runs the agent commands (mirrors claude_code/openai_codex credential copies).
+        self._copy_hank_into_container(session, task_name)
+        return super().perform_task(
+            task_prompt=task_prompt,
+            session=session,
+            logging_dir=logging_dir,
+            task_name=task_name,
+        )
+
+    def _copy_hank_into_container(self, session: TmuxSession, task_name: str | None) -> None:
+        """Sync the project-root hanks/base hank + the ade glue scripts into the container."""
+        if not _PROJECT_ROOT_HANKS_BASE.is_dir():
+            raise FileNotFoundError(
+                f"Hankweave hank not found at {_PROJECT_ROOT_HANKS_BASE}. Expected a 'hanks/base' "
+                "directory (hank.json + prompt-header.md) at the superbench project root."
+            )
+        log_harness_info(
+            logger,
+            task_name,
+            "agent",
+            f"Syncing hank from {_PROJECT_ROOT_HANKS_BASE} -> {_CONTAINER_HANK_DIR}",
+        )
+        # put_archive requires the target dir to exist; this also creates /installed-agent so the
+        # glue copy below lands correctly even before the base class copies the setup script.
+        session.container.exec_run(["sh", "-c", f"mkdir -p {_CONTAINER_HANK_DIR}"])
+        session.copy_to_container(
+            _PROJECT_ROOT_HANKS_BASE,
+            container_dir=_CONTAINER_HANK_DIR,
+        )
+        session.copy_to_container(
+            [_AGENT_DIR / "run-hankweave.sh", _AGENT_DIR / "hw-metrics.js"],
+            container_dir="/installed-agent",
+        )
 
     def _run_agent_commands(self, task_prompt: str) -> list[TerminalCommand]:
         # Write the prompt as base64: ade wraps run commands with `2>&1 | tee` (no heredocs) and
