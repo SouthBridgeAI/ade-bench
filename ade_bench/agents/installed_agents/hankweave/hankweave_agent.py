@@ -2,10 +2,11 @@
 ade-bench agent that solves a task by running a one-codon Hankweave hank.
 
 Flow per task (all inside the sandbox container, cwd /app = the dbt project ade grades):
-  1. The hank (hank.json + prompt-header.md) is synced from the project-root `hanks/base` into
-     /installed-agent/hank, and the run-hankweave.sh + hw-metrics.js glue is copied to
-     /installed-agent (see perform_task). `hankweave-setup.sh` is then sourced as a thin installer
-     (PATH + bun sanity check); it no longer generates any files.
+  1. The hank (hank.json + prompt-header.md) is synced from the project-root
+     `hanks/ade-bench/<hank>` (hank name from $HANKWEAVE_HANK, default "base"; set via the bench
+     `--hank` flag) into /installed-agent/hank, and the run-hankweave.sh + hw-metrics.js glue is
+     copied to /installed-agent (see perform_task). `hankweave-setup.sh` is then sourced as a thin
+     installer (PATH + bun sanity check); it no longer generates any files.
   2. The task prompt is written to /tmp/hw_task_prompt.txt (base64-decoded, quoting-safe).
   3. `run-hankweave.sh` snapshots /app into a read-only data source, composes the codon prompt
      (prompt-header.md + task prompt), runs `hankweave hank.json <data> --model haiku`, then mirrors
@@ -41,10 +42,14 @@ PROMPT_FILE = "/tmp/hw_task_prompt.txt"
 # superbench adapter symlinks the project-root .claude-credentials.json for subscription auth.
 _PROJECT_ROOT_CREDENTIALS = Path(__file__).resolve().parents[4] / ".claude-credentials.json"
 
-# The portable hank lives at the superbench project root (parents[6] == one level above the
-# ade-bench submodule). It is synced into the container by perform_task. The ade-integration glue
-# (run-hankweave.sh, hw-metrics.js) lives next to this file and is copied in alongside it.
-_PROJECT_ROOT_HANKS_BASE = Path(__file__).resolve().parents[6] / "hanks" / "base"
+# Hanks live at the superbench project root (parents[6] == one level above the ade-bench submodule),
+# scoped per benchmark: hanks/<benchmark>/<hank-name>/. This agent serves ade-bench, so it resolves
+# hanks/ade-bench/<HANKWEAVE_HANK or "base">. The selected hank is synced into the container by
+# perform_task; the ade-integration glue (run-hankweave.sh, hw-metrics.js) lives next to this file
+# and is copied in alongside it.
+_PROJECT_ROOT_HANKS = Path(__file__).resolve().parents[6] / "hanks"
+_BENCHMARK_DIR = "ade-bench"
+_DEFAULT_HANK = "base"
 _AGENT_DIR = Path(__file__).resolve().parent
 _CONTAINER_HANK_DIR = "/installed-agent/hank"
 
@@ -102,23 +107,26 @@ class HankweaveAgent(AbstractInstalledAgent):
         )
 
     def _copy_hank_into_container(self, session: TmuxSession, task_name: str | None) -> None:
-        """Sync the project-root hanks/base hank + the ade glue scripts into the container."""
-        if not _PROJECT_ROOT_HANKS_BASE.is_dir():
+        """Sync the selected hanks/ade-bench/<hank> hank + the ade glue scripts into the container."""
+        hank_name = os.environ.get("HANKWEAVE_HANK") or _DEFAULT_HANK
+        hank_dir = _PROJECT_ROOT_HANKS / _BENCHMARK_DIR / hank_name
+        if not hank_dir.is_dir():
             raise FileNotFoundError(
-                f"Hankweave hank not found at {_PROJECT_ROOT_HANKS_BASE}. Expected a 'hanks/base' "
-                "directory (hank.json + prompt-header.md) at the superbench project root."
+                f"Hankweave hank not found at {hank_dir}. Expected a "
+                f"'hanks/{_BENCHMARK_DIR}/{hank_name}' directory (hank.json + prompt-header.md) at "
+                "the superbench project root (set via --hank; default 'base')."
             )
         log_harness_info(
             logger,
             task_name,
             "agent",
-            f"Syncing hank from {_PROJECT_ROOT_HANKS_BASE} -> {_CONTAINER_HANK_DIR}",
+            f"Syncing hank '{hank_name}' from {hank_dir} -> {_CONTAINER_HANK_DIR}",
         )
         # put_archive requires the target dir to exist; this also creates /installed-agent so the
         # glue copy below lands correctly even before the base class copies the setup script.
         session.container.exec_run(["sh", "-c", f"mkdir -p {_CONTAINER_HANK_DIR}"])
         session.copy_to_container(
-            _PROJECT_ROOT_HANKS_BASE,
+            hank_dir,
             container_dir=_CONTAINER_HANK_DIR,
         )
         session.copy_to_container(
