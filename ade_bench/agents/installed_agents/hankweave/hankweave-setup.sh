@@ -103,6 +103,17 @@ else
   echo "hankweave: no project output produced; leaving $APP unchanged"
 fi
 
+# Stage the full execution dir onto the host log mount (/logs == the trial's sessions/ dir) so the
+# bench adapter can preserve it under runs/<run-id>/ and fold server.log into bench.log. Files only
+# (no stdout) so the metrics line below stays the last parseable line.
+LOGDIR="${BENCH_HARNESS_LOGS_DIR:-/logs}"
+if [ -d "$LOGDIR" ] && [ -d "$EXEC" ]; then
+  rm -rf "$LOGDIR/hankweave-exec"
+  cp -a "$EXEC" "$LOGDIR/hankweave-exec" 2>/dev/null || true
+  rm -f "$LOGDIR/hankweave-exec/agentRoot/read_only_data_source" 2>/dev/null || true
+  echo "hankweave: staged execution dir to $LOGDIR/hankweave-exec"
+fi
+
 node /installed-agent/hw-metrics.js "$EXEC/.hankweave/state.json"
 RUNEOF
 
