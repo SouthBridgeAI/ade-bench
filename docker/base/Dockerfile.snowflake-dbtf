@@ -11,6 +11,12 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# bun + the hankweave runtime, baked in for the `hankweave` agent (runs a one-codon hank per
+# task via `hankweave ... --model haiku`). Baked in so task runs need no network download.
+RUN npm install -g bun@1.3.13 \
+    && bun add -g hankweave@0.6.2
+ENV PATH="/root/.bun/bin:${PATH}"
+
 # Install dbt Fusion (CACHEBUST forces re-download when build-arg changes)
 ARG CACHEBUST=0
 RUN export SHELL=/bin/bash && \

@@ -3,14 +3,14 @@ from typing import ClassVar
 
 from ade_bench.agents.agent_name import AgentName
 from ade_bench.agents.base_agent import BaseAgent
-from ade_bench.agents.installed_agents.bench_harness.bench_harness_agent import (
-    BenchHarnessAgent,
-)
 from ade_bench.agents.installed_agents.claude_code.claude_code_agent import (
     ClaudeCodeAgent,
 )
 from ade_bench.agents.installed_agents.gemini_cli.gemini_cli_agent import (
     GeminiCLIAgent,
+)
+from ade_bench.agents.installed_agents.hankweave.hankweave_agent import (
+    HankweaveAgent,
 )
 from ade_bench.agents.installed_agents.macro.macro_agent import (
     MacroAgent,
@@ -41,7 +41,7 @@ class NamedAgentFactory(AgentFactory):
         OpenAICodexAgent.NAME: OpenAICodexAgent,
         GeminiCLIAgent.NAME: GeminiCLIAgent,
         MacroAgent.NAME: MacroAgent,
-        BenchHarnessAgent.NAME: BenchHarnessAgent,
+        HankweaveAgent.NAME: HankweaveAgent,
     }
 
     def __init__(self, agent_name: AgentName):
